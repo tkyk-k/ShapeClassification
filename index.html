@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ONNX推論テスト</title>
+  <script src="https://cdn.jsdelivr.net/npm/onnxjs/dist/onnx.min.js"></script>
+</head>
+<body>
+  <h2>画像をアップロードして推論</h2>
+  <input type="file" id="upload" accept="image/*"><br><br>
+  <button onclick="run()">推論する</button>
+  <pre id="result">ここに結果が表示されます</pre>
+
+  <script>
+    let session;
+
+    async function run() {
+      const file = document.getElementById('upload').files[0];
+      if (!file) {
+        alert("画像を選んでください");
+        return;
+      }
+
+      try {
+        const img = await createImageBitmap(file);
+        const tensor = await preprocessImage(img); // 入力画像をTensorに変換
+
+        // ONNXモデルの読み込み（初回のみ）
+        if (!session) {
+          session = new onnx.InferenceSession();
+          await session.loadModel("shape_detector.onnx");
+          console.log("✅ モデル読み込み完了");
+
+          // 入力名・出力名の確認（デバッグ用）
+          console.log("Input names:", session.inputNames);
+          console.log("Output names:", session.outputNames);
+        }
+
+        const inputName = session.inputNames[0];
+        const outputName = session.outputNames[0];
+
+        const feeds = {};
+        feeds[inputName] = tensor;
+
+        const outputMap = await session.run(feeds);
+        const outputTensor = outputMap[outputName];
+
+        if (!outputTensor) {
+          throw new Error(`❌ 推論結果に '${outputName}' が含まれていません`);
+        }
+
+        const outputData = outputTensor.data;
+        document.getElementById("result").innerText =
+          JSON.stringify(Array.from(outputData).slice(0, 30), null, 2); // 最初の30個だけ表示
+
+      } catch (err) {
+        console.error("❌ 推論中にエラー:", err);
+        document.getElementById("result").innerText = `❌ 推論エラー: ${err.message}`;
+      }
+    }
+
+    async function preprocessImage(img) {
+      // OffscreenCanvasを使って画像を512x512にリサイズ
+      const canvas = new OffscreenCanvas(512, 512);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, 512, 512);
+
+      // RGBAピクセルデータを取得
+      const imageData = ctx.getImageData(0, 0, 512, 512).data;
+
+      // グレースケール＆正規化
+      const input = new Float32Array(1 * 1 * 512 * 512);
+      for (let i = 0; i < 512 * 512; i++) {
+        const r = imageData[i * 4]; // Rのみ使う（G=B=Rなら白黒）
+        input[i] = r / 255.0;
+      }
+
+      // 形状：[1, 1, 512, 512]
+      return new onnx.Tensor(input, "float32", [1, 1, 512, 512]);
+    }
+  </script>
+</body>
+</html>
