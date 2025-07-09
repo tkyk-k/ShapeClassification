@@ -53,7 +53,7 @@ document.getElementById('predictBtn').addEventListener('click', async () => {
   }
 
   const tensor = new ort.Tensor("float32", grayData, [1, 1, 512, 512]);
-  const session = await ort.InferenceSession.create('trained_model.onnx');
+  const session = await ort.InferenceSession.create('trained_model2.onnx');
   const results = await session.run({ input: tensor });
   const output = results[Object.keys(results)[0]];
 
